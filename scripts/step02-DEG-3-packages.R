@@ -1,37 +1,40 @@
-### ---------------
-###
-### Create: Jianming Zeng
-### Date: 2019-04-02 21:59:01
-### Email: jmzeng1314@163.com
-### Blog: http://www.bio-info-trainee.com/
-### Forum:  http://www.biotrainee.com/thread-1376-1-1.html
-### CAFS/SUSTC/Eli Lilly/University of Macau
-### Update Log:   2019-04-02  second version
-###
-### ---------------
-
-### https://github.com/jmzeng1314/GEO/blob/master/airway/DEG_rnsseq.R
-
+library("BiocParallel")
+register(MulticoreParam(2)) ##我的是两个核心 ，貌似有个检测核心个数找不找代码了…………
 rm(list=ls())
 options(stringsAsFactors = F)
-
-Rdata_dir='../Rdata/'
+library(DESeq2)
+library(stringr)
+getwd='../Rdata/'
 Figure_dir='../figures/'
 # 加载上一步从RTCGA.miRNASeq包里面提取miRNA表达矩阵和对应的样本临床信息。
 load( file = 
-        file.path(Rdata_dir,'TCGA-KIRC-miRNA-example.Rdata')
+        file.path(getwd,'TCGA-KIRC-miRNA-example.Rdata')
 )
+
+expr_raw <- miRNA_tcga_xena # miRNA信息赋值给主变量，
+## ** 主变量：为整个代买跑下来几乎约定俗成的变量，
+rownames(expr_raw)<-expr_raw[,1]
+expr_raw <- expr_raw[,-1]
+meta <- miRNA_clinical # 临床信息提取
+rownames(meta)<-str_replace_all(meta[,1],"-","." )## str_replace_all 替换函数
+meta <-meta[,-1]
+meta <- meta[str_sub(colnames(expr_raw),1,15),]##从meta里面提取所需要的样本
 dim(expr)
 dim(meta)
+expr <- 2^expr_raw-1
+exprSet<- expr##  # 为了DESeq2使用的数据；
+exprSet<-round(exprSet)  ## 或者使用另一个函数，expr <- ceiling(expr)## # 取整数 为了DESeq2分析；
+## gdc tcga 里面每一项都会标注数据是如何存储的，查看只有转换为原始counts进行后续计算；
+
 # 可以看到是 537个病人，但是有593个样本，每个样本有 552个miRNA信息。
 # 当然，这个数据集可以下载原始测序数据进行重新比对，可以拿到更多的miRNA信息
 
 # 这里需要解析TCGA数据库的ID规律，来判断样本归类问题。
 group_list=ifelse(as.numeric(substr(colnames(expr),14,15)) < 10,'tumor','normal')
-
 table(group_list)
+group_list <- factor(group_list)
 exprSet=na.omit(expr)
-source('../functions.R')
+source('~/r_prac/pre_dara/functions1.R')
 
 ### ---------------
 ###
@@ -47,7 +50,7 @@ if(T){
   dds <- DESeqDataSetFromMatrix(countData = exprSet,
                                 colData = colData,
                                 design = ~ group_list)
-  tmp_f=file.path(Rdata_dir,'TCGA-KIRC-miRNA-DESeq2-dds.Rdata')
+  tmp_f=file.path(getwd(),'TCGA-KIRC-miRNA-DESeq2-dds.Rdata')
   if(!file.exists(tmp_f)){
     dds <- DESeq(dds)
     save(dds,file = tmp_f)
@@ -134,8 +137,8 @@ if(T){
   draw_h_v(exprSet,nrDEG,'limma',group_list,1)
   
 }
-
-tmp_f=file.path(Rdata_dir,'TCGA-KIRC-miRNA-DEG_results.Rdata')
+save(DEG,DEG_limma_voom,edgeR_DEG,group_list,expr,expr_raw,exprSet,meta,nrDEG,nrDEG1,file="TCGA-KIRC-miRNA-DEG_results2.Rdata") #保存标量吧
+tmp_f=file.path(getwd(),'TCGA-KIRC-miRNA-DEG_results.Rdata')
 
 if(file.exists(tmp_f)){
   save(DEG_limma_voom,DESeq2_DEG,edgeR_DEG, file = tmp_f)
@@ -159,8 +162,8 @@ mi=unique(c(rownames(nrDEG1),rownames(nrDEG1),rownames(nrDEG1)))
 lf=data.frame(lf1=nrDEG1[mi,1],
               lf2=nrDEG2[mi,1],
               lf3=nrDEG3[mi,1])
-cor(na.omit(lf))
-# 可以看到采取不同R包，会有不同的归一化算法，这样算到的logFC会稍微有差异。
+cor(na.omit(lf)) 
 
+# 可以看到采取不同R包，会有不同的归一化算法，这样算到的logFC会稍微有差异。
 
 

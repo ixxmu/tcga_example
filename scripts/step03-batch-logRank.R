@@ -11,10 +11,32 @@
 ### ---------------
 
 ### https://github.com/jmzeng1314/GEO/blob/master/GSE11121/step5-surivival.R
+library(R.utils)
+## clinical00=fread("TCGA-KIRC__Xena_Matrices__TCGA-KIRC.GDC_phenotype.tsv.gz",header = T,sep = '\t')
+clinical00=read.table( "TCGA-KIRC__Xena_Matrices__TCGA-KIRC.GDC_phenotype.tsv.gz",
+            header = T,
+            sep = '\t',
+            quote = '' )
+meta_gdc<-clinical00
+head(meta_gdc)
+meta2<-meta_gdc
+meta2<-as.data.frame(meta2)
+meta2[,1]
+rownames(meta2) <- str_replace_all( meta2[,1], "-", ".")
+meta2 <- meta2[colnames(expr),]
+meta2[1:5, 1:6] 
+col_race<-grep("race",colnames(meta2))
 
-rm(list=ls())
-options(stringsAsFactors = F)
 
+meta<-miRNA_clinical
+rownames(meta)<-str_replace_all(meta[,1],"-",".")
+meta<-meta[str_sub(colnames(expr),1,15),]
+col_age<-grep("age",colnames(meta))
+col_gender<-grep("gender",colnames(meta))
+meta<-meta[,c(1,2,4,col_age,col_gender)]
+
+meta$race <-meta2[match(rownames(meta),str_sub(rownames(meta2),1,15)),col_race]
+save(meta,expr,file="kirc_pheno.Rdata")
 Rdata_dir='../Rdata/'
 Figure_dir='../figures/'
 # 加载上一步从RTCGA.miRNASeq包里面提取miRNA表达矩阵和对应的样本临床信息。
@@ -23,6 +45,10 @@ load( file =
 )
 dim(expr)
 dim(meta)
+
+
+
+
 # 可以看到是 537个病人，但是有593个样本，每个样本有 552个miRNA信息。
 # 当然，这个数据集可以下载原始测序数据进行重新比对，可以拿到更多的miRNA信息
 
@@ -40,16 +66,23 @@ library(survminer)
 ### survival analysis only for patients with tumor.
 if(F){
   exprSet=na.omit(expr)
-  exprSet=exprSet[,group_list=='tumor']
+  exprSet=exprSet[,group_list=='tumor'] ##这个value判断为真，真的很可以；
   
   head(meta)
   colnames(meta)
   meta[,3][is.na(meta[,3])]=0
   meta[,4][is.na(meta[,4])]=0
-  meta$days=as.numeric(meta[,3])+as.numeric(meta[,4])
-  meta=meta[,c(1:2,5:9)]
+
+  meta$days=as.numeric(meta[,3])  
+  ## jimmy 原始代码 meta$days=as.numeric(meta[,3])+as.numeric(meta[,4]) ，
+  # 以为使用的数据下载软件不一样，所以换了部分函数；
+  age_col<- grep("gender",colnames(meta)) #注意区分grepl函数
+  meta_raw <- meta
+  meta<- meta_raw[,c(3:4,46,age_col)]
+  ## meta=meta[,c(1:2,5:9)]
   colnames(meta)
   colnames(meta)=c('ID','event','race','age','gender','stage',"days")
+  meta<-meta[,c(1,2,7,4,6,5,3)]
   # R里面实现生存分析非常简单！
   
   # 用my.surv <- surv(OS_MONTHS,OS_STATUS=='DECEASED')构建生存曲线。
@@ -62,23 +95,24 @@ if(F){
   meta$event=ifelse(meta$event=='alive',0,1)
   meta$age=as.numeric(meta$age)
   library(stringr) 
-  meta$stage=str_split(meta$stage,' ',simplify = T)[,2]
+  meta$stage=str_split(meta$stage,' ',simplify = T)[,2] ## 注意这个函数的simplify 参数；
   table(  meta$stage)
   boxplot(meta$age)
   meta$age_group=ifelse(meta$age>median(meta$age),'older','younger')
   table(meta$race)
   meta$time=meta$days/30
+  meta$ID <- str_replace_all(meta$ID,"-",".")
   phe=meta
   
   head(phe)
   phe$ID=toupper(phe$ID) 
-  phe=phe[match(substr(colnames(exprSet),1,12),phe$ID),]
+  phe=phe[match(substr(colnames(exprSet),1,12),substr(phe$ID,1,12)),]
   head(phe)
   exprSet[1:4,1:4]
   
   save(exprSet,phe,
        file = 
-         file.path(Rdata_dir,'TCGA-KIRC-miRNA-survival_input.Rdata')
+         file.path(getwd(),'TCGA-KIRC-miRNA-survival_input.Rdata')
       )
 }
 # 上面被关闭的代码，就是在整理临床信息和生存分析的表达矩阵。
@@ -88,6 +122,7 @@ load(  file =
 )
 head(phe)
 exprSet[1:4,1:4]
+colnames(exprSet)<-substr(colnames(exprSet),1,12)
 # 利用ggsurvplot快速绘制漂亮的生存曲线图
 sfit <- survfit(Surv(time, event)~gender, data=phe)
 sfit
@@ -122,8 +157,10 @@ g2='hsa-mir-143' # p value = 0.0093
 g3='hsa-mir-192' # p value = 0.00073
 g4='hsa-mir-183' # p value = 0.00092
 g5='hsa-mir-10b' # p value < 0.0001
+g<-g5
 gs=c('hsa-mir-21','hsa-mir-143','hsa-mir-192',
      'hsa-mir-183','hsa-mir-10b') 
+exprSet <- as.matrix(exprSet) ## 区分于as.data.frame
 splots <- lapply(gs, function(g){
   phe$gene=ifelse(exprSet[g,]>median(exprSet[g,]),'high','low')
   table(phe$gene)
@@ -136,11 +173,15 @@ dev.off()
 
 
 ## 批量生存分析 使用  logrank test 方法
-mySurv=with(phe,Surv(time, event))
-log_rank_p <- apply(exprSet , 1 , function(gene){
+mySurv= with(phe,Surv(days, event))
+
+exprSet<-expr
+
+log_rank_p <- apply(expr2 , 1 , function(gene){
   # gene=exprSet[1,]
-  phe$group=ifelse(gene>median(gene),'high','low')  
-  data.survdiff=survdiff(mySurv~group,data=phe)
+  phe$group=ifelse(gene>median(gene),'high','low') 
+  phe$group<-factor(phe$group)
+  data.survdiff=survdiff(data=phe,mySurv~phe$group)
   p.val = 1 - pchisq(data.survdiff$chisq, length(data.survdiff$n) - 1)
   return(p.val)
 })

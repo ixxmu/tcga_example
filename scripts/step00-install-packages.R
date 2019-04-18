@@ -28,16 +28,18 @@
 
 rm(list = ls()) 
 #清空当前工作空间变量  
-options()$repos  
+# options()$repos  
 #查看当前工作空间默认的下载包路径
-options()$BioC_mirror 
+# options()$BioC_mirror 
 #查看使用BioCManager下载包的默认路径
-options(BioC_mirror="https://mirrors.ustc.edu.cn/bioc/") 
+## options(BioC_mirror="https://mirrors.ustc.edu.cn/bioc/") 
 # 指定使用BioCManager下载的路径
-options("repos" = c(CRAN="https://mirrors.tuna.tsinghua.edu.cn/CRAN/")) 
+## options("repos" = c(CRAN="https://cran.r-project.org")) 
+#"https://cran.rstudio.com/"
+
 # 指定使用install.packages下载包的路径
-options()$repos 
-options()$BioC_mirror
+# options()$repos 
+# options()$BioC_mirror
 
 
 # https://bioconductor.org/packages/release/bioc/html/GEOquery.html
